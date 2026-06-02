@@ -17,6 +17,12 @@ export class UsersService {
     });
   }
 
+  findById(id: number) {
+    return this.usersRepository.findOne({
+      where: { id },
+    });
+  }
+
   create(email: string, password: string) {
     const user = this.usersRepository.create({
       email,

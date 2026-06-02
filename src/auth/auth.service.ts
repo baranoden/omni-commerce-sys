@@ -1,6 +1,6 @@
 import {
   Injectable,
-  BadRequestException,
+  ConflictException,
   UnauthorizedException,
 } from '@nestjs/common';
 
@@ -21,7 +21,7 @@ export class AuthService {
     const existingUser = await this.usersService.findByEmail(email);
 
     if (existingUser) {
-      throw new BadRequestException('User already exists');
+      throw new ConflictException('Böyle bir kayıt mevcut');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -38,13 +38,13 @@ export class AuthService {
     const user = await this.usersService.findByEmail(email);
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Geçersiz kullanıcı bilgileri');
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Geçersiz kullanıcı bilgileri');
     }
 
     const token = await this.jwtService.signAsync({
@@ -54,6 +54,19 @@ export class AuthService {
 
     return {
       access_token: token,
+    };
+  }
+
+  async getProfile(userId: number) {
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException('Kullanıcı bulunamadı');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
     };
   }
 }
