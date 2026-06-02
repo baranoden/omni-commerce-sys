@@ -107,11 +107,13 @@ Uygulama artık gözlemlenebilirlik için şu bileşenleri içerir:
 
 ## Mikroservis mimarisi
 
-Proje artık iki ayrı servis olacak şekilde kurgulandı:
+Proje artık aşağıdaki iletişim modelini kullanır:
 
-- `api-gateway`: HTTP isteklerini alır ve auth / ürün operasyonlarını ilgili mikroservislere iletir.
-- `auth-service`: Kayıt, giriş, JWT üretimi ve kullanıcı profil işlemlerini TCP üzerinden çalıştırır.
-- `products-service`: Ürün CRUD operasyonlarını TCP üzerinden çalıştırır.
+- `api-gateway`: HTTP isteklerini alır ve gerekli senkron işlemler için mikroservislere TCP üzerinden bağlanır.
+- `auth-service`: Kayıt, giriş, JWT üretimi ve kullanıcı profil işlemlerini TCP üzerinden cevaplar; başarılı işlemler sonrası Kafka'ya domain event yayınlar.
+- `products-service`: Ürün CRUD operasyonlarını TCP üzerinden cevaplar; başarılı işlemler sonrası Kafka'ya domain event yayınlar.
+- Asenkron servisler arası iletişim Kafka event'leri ile yürütülür.
+- Senkron servisler arası iletişim gerektiğinde TCP ile yürütülür.
 
 ### Klasör yapısı
 
@@ -132,6 +134,11 @@ Eski kök `src` altındaki `auth` ve `products` klasörleri artık kullanılmıy
 - `AUTH_SERVICE_HOST`, `AUTH_SERVICE_TCP_PORT`
 - `PRODUCTS_DB_HOST`, `PRODUCTS_DB_PORT`, `PRODUCTS_DB_USERNAME`, `PRODUCTS_DB_PASSWORD`, `PRODUCTS_DB_NAME`
 - `PRODUCTS_SERVICE_HOST`, `PRODUCTS_SERVICE_TCP_PORT`
+- `KAFKA_BROKERS` (örn. `localhost:9092` veya `localhost:9092,localhost:9093`)
+- `KAFKA_CLIENT_ID_PREFIX`
+- `API_GATEWAY_KAFKA_GROUP_ID`
+- `AUTH_EVENTS_KAFKA_GROUP_ID`
+- `PRODUCT_EVENTS_KAFKA_GROUP_ID`
 - `JWT_SECRET`, `JWT_EXPIRES_IN`
 
 ### Çalıştırma
@@ -141,6 +148,171 @@ Eski kök `src` altındaki `auth` ve `products` klasörleri artık kullanılmıy
 - `auth_db`
 - `products_db`
 
+Kafka kullanıldığı için broker'ın da ayağa kalkması gerekir. Uygulama varsayılan olarak `127.0.0.1:9092` adresine bağlanmaya çalışır. `ECONNREFUSED 127.0.0.1:9092` hatası, bu adreste çalışan bir Kafka broker bulunmadığını gösterir.
+
+#### Kafka'yı Docker ile başlatma
+
+Projeye yerel geliştirme için bir Docker Compose dosyası eklendi: [docker-compose.yml](docker-compose.yml)
+
+Kafka ve arayüzünü başlatmak için:
+
+```bash
+docker compose up -d
+```
+
+Kontrol etmek için:
+
+```bash
+docker compose ps
+```
+
+İsterseniz arayüze şu adresten bakabilirsiniz:
+
+- Kafka UI: `http://localhost:8080`
+
+Kapatmak için:
+
+```bash
+docker compose down
+```
+
+Veriyi de silmek isterseniz:
+
+```bash
+docker compose down -v
+```
+
+#### Tüm sistemi tek komutla ayağa kaldırma
+
+Artık tüm proje Docker ile birlikte ayağa kaldırılabilir. Aşağıdaki servisler tek compose dosyasında tanımlıdır:
+
+- `api-gateway`
+- `auth-service`
+- `products-service`
+- `auth-db`
+- `products-db`
+- `kafka`
+- `kafka-ui`
+
+İlk kurulum veya image'ları yeniden oluşturmak için:
+
+```bash
+docker compose up --build -d
+```
+
+Sonraki normal açılışlarda çoğunlukla şu yeterlidir:
+
+```bash
+docker compose up -d
+```
+
+Logları izlemek için:
+
+```bash
+docker compose logs -f
+```
+
+Sadece gateway loglarını izlemek için:
+
+```bash
+docker compose logs -f api-gateway
+```
+
+Bu kurulumdan sonra uygulama uçları şunlardır:
+
+- API Gateway: `http://localhost:3000`
+- Kafka UI: `http://localhost:8080`
+- Auth TCP: `localhost:4002`
+- Products TCP: `localhost:4001`
+- Auth PostgreSQL: `localhost:5433`
+- Products PostgreSQL: `localhost:5434`
+
+Sistemi kapatmak için:
+
+```bash
+docker compose down
+```
+
+Tüm volume'leri de temizlemek için:
+
+```bash
+docker compose down -v
+```
+
+#### Hangi durumda hangi komut?
+
+Günlük kullanım için pratik özet:
+
+- İlk kez ayağa kaldırma veya Dockerfile / bağımlılık değiştiyse:
+
+```bash
+docker compose up --build -d
+```
+
+- Normal açma:
+
+```bash
+docker compose up -d
+```
+
+- Sadece durdurma, container'ları silmeden:
+
+```bash
+docker compose stop
+```
+
+- Durdurulan container'ları tekrar başlatma:
+
+```bash
+docker compose start
+```
+
+- Tam kapatma ve container/network temizleme:
+
+```bash
+docker compose down
+```
+
+- Tam sıfırlama, veritabanı ve Kafka verileri dahil her şeyi silme:
+
+```bash
+docker compose down -v
+```
+
+- Image'ları da temizlemek isterseniz:
+
+```bash
+docker compose down -v --rmi local
+```
+
+- Durumu kontrol etme:
+
+```bash
+docker compose ps
+```
+
+- Tüm loglar:
+
+```bash
+docker compose logs -f
+```
+
+- Tek servis logu:
+
+```bash
+docker compose logs -f api-gateway
+docker compose logs -f auth-service
+docker compose logs -f products-service
+docker compose logs -f kafka
+```
+
+Önerilen akış:
+
+- Her gün çalışırken: `docker compose up -d`
+- İş bitince: `docker compose down`
+- Veriyi tamamen temizlemek istediğinizde: `docker compose down -v`
+- Kod veya Docker yapılandırması değiştiyse: `docker compose up --build -d`
+
 Sonra servisleri ayrı terminallerde başlatın:
 
 ```bash
@@ -148,6 +320,16 @@ npm run start:dev
 npm run start:auth:dev
 npm run start:products:dev
 ```
+
+Kafka broker'ı da çalışıyor olmalıdır. Varsayılan topic kullanımları:
+
+- `auth.user.registered`
+- `auth.user.logged_in`
+- `catalog.product.created`
+- `catalog.product.updated`
+- `catalog.product.deleted`
+
+`api-gateway`, bu event'leri Kafka üzerinden tüketip merkezi log akışına ekler.
 
 ### Ürün endpoint'leri
 

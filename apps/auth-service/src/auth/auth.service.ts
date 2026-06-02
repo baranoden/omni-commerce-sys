@@ -1,18 +1,32 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ClientKafka } from '@nestjs/microservices';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnApplicationBootstrap, OnModuleDestroy {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    @Inject('AUTH_EVENTS_CLIENT')
+    private readonly authEventsClient: ClientKafka,
   ) {}
+
+  async onApplicationBootstrap() {
+    await this.authEventsClient.connect();
+  }
+
+  async onModuleDestroy() {
+    await this.authEventsClient.close();
+  }
 
   async register(email: string, password: string) {
     const existingUser = await this.usersService.findByEmail(email);
@@ -23,6 +37,12 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await this.usersService.create(email, hashedPassword);
+
+    this.authEventsClient.emit('auth.user.registered', {
+      userId: user.id,
+      email: user.email,
+      occurredAt: new Date().toISOString(),
+    });
 
     return {
       id: user.id,
@@ -46,6 +66,12 @@ export class AuthService {
     const token = await this.jwtService.signAsync({
       sub: user.id,
       email: user.email,
+    });
+
+    this.authEventsClient.emit('auth.user.logged_in', {
+      userId: user.id,
+      email: user.email,
+      occurredAt: new Date().toISOString(),
     });
 
     return {

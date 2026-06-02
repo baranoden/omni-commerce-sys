@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { ProductsModule } from './products/products.module';
+import { IntegrationEventsController } from './integration-events.controller';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { ProductsModule } from './products/products.module';
     AuthModule,
     ProductsModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, IntegrationEventsController],
   providers: [
     AppService,
     {
