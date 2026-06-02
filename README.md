@@ -105,6 +105,73 @@ Uygulama artık gözlemlenebilirlik için şu bileşenleri içerir:
 - Uygulama: `http://localhost:3000`
 - Prometheus metrics: `http://localhost:3000/metrics`
 
+## Mikroservis mimarisi
+
+Proje artık iki ayrı servis olacak şekilde kurgulandı:
+
+- `api-gateway`: HTTP isteklerini alır ve auth / ürün operasyonlarını ilgili mikroservislere iletir.
+- `auth-service`: Kayıt, giriş, JWT üretimi ve kullanıcı profil işlemlerini TCP üzerinden çalıştırır.
+- `products-service`: Ürün CRUD operasyonlarını TCP üzerinden çalıştırır.
+
+### Klasör yapısı
+
+- `apps/api-gateway`: HTTP gateway
+- `apps/auth-service`: auth mikroservisi
+- `apps/products-service`: ürün mikroservisi
+
+Eski kök `src` altındaki `auth` ve `products` klasörleri artık kullanılmıyor.
+
+### Ayrı veritabanları
+
+- Auth / kullanıcı verileri için varsayılan veritabanı: `auth_db`
+- Ürün verileri için varsayılan veritabanı: `products_db`
+
+İsterseniz bunları ortam değişkenleriyle değiştirebilirsiniz:
+
+- `AUTH_DB_HOST`, `AUTH_DB_PORT`, `AUTH_DB_USERNAME`, `AUTH_DB_PASSWORD`, `AUTH_DB_NAME`
+- `AUTH_SERVICE_HOST`, `AUTH_SERVICE_TCP_PORT`
+- `PRODUCTS_DB_HOST`, `PRODUCTS_DB_PORT`, `PRODUCTS_DB_USERNAME`, `PRODUCTS_DB_PASSWORD`, `PRODUCTS_DB_NAME`
+- `PRODUCTS_SERVICE_HOST`, `PRODUCTS_SERVICE_TCP_PORT`
+- `JWT_SECRET`, `JWT_EXPIRES_IN`
+
+### Çalıştırma
+
+Önce iki PostgreSQL veritabanını oluşturun:
+
+- `auth_db`
+- `products_db`
+
+Sonra servisleri ayrı terminallerde başlatın:
+
+```bash
+npm run start:dev
+npm run start:auth:dev
+npm run start:products:dev
+```
+
+### Ürün endpoint'leri
+
+Tüm ürün endpoint'leri JWT korumalıdır.
+
+- `POST /products`
+- `GET /products`
+- `GET /products/:id`
+- `PATCH /products/:id`
+- `DELETE /products/:id`
+
+Örnek ürün payload'ı:
+
+```json
+{
+  "name": "Kablosuz Mouse",
+  "description": "Sessiz tıklamalı ergonomik mouse",
+  "price": 799.99,
+  "stock": 25,
+  "sku": "MOUSE-001",
+  "isActive": true
+}
+```
+
 ### Grafana / Prometheus notu
 
 Prometheus, [observability/prometheus.yml](observability/prometheus.yml) içindeki scrape ayarıyla uygulamanın `/metrics` endpoint'ini toplayabilir. Grafana tarafında veri kaynağı olarak Prometheus eklenerek dashboard oluşturulabilir.
