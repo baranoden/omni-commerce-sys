@@ -102,8 +102,8 @@ Uygulama artık gözlemlenebilirlik için şu bileşenleri içerir:
 
 ### Endpoint'ler
 
-- Uygulama: `http://localhost:3000`
-- Prometheus metrics: `http://localhost:3000/metrics`
+- Uygulama: `http://localhost:8080`
+- Prometheus metrics: `http://localhost:8080/metrics`
 
 ## Mikroservis mimarisi
 
@@ -168,7 +168,7 @@ docker compose ps
 
 İsterseniz arayüze şu adresten bakabilirsiniz:
 
-- Kafka UI: `http://localhost:8080`
+- Kafka UI: `http://localhost:8081`
 
 Kapatmak için:
 
@@ -220,8 +220,8 @@ docker compose logs -f api-gateway
 
 Bu kurulumdan sonra uygulama uçları şunlardır:
 
-- API Gateway: `http://localhost:3000`
-- Kafka UI: `http://localhost:8080`
+- API Gateway: `http://localhost:8080`
+- Kafka UI: `http://localhost:8081`
 - Auth TCP: `localhost:4002`
 - Products TCP: `localhost:4001`
 - Auth PostgreSQL: `localhost:5433`

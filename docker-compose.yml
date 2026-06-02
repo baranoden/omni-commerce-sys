@@ -76,7 +76,7 @@ services:
       kafka:
         condition: service_healthy
     ports:
-      - '8080:8080'
+      - '8081:8080'
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
@@ -152,7 +152,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: 8080
       AUTH_SERVICE_HOST: auth-service
       AUTH_SERVICE_TCP_PORT: 4002
       PRODUCTS_SERVICE_HOST: products-service
@@ -161,7 +161,7 @@ services:
       JWT_SECRET: SUPER_SECRET_KEY
       LOG_LEVEL: info
     ports:
-      - '3000:3000'
+      - '8080:8080'
 
 volumes:
   auth_db_data:
