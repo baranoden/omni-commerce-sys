@@ -83,6 +83,32 @@ Check out a few resources that may come in handy when working with NestJS:
 - To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
 - Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
 
+## Observability
+
+Uygulama artık gözlemlenebilirlik için şu bileşenleri içerir:
+
+- ELK uyumlu yapılandırılmış JSON loglar (`nestjs-pino` / `pino`)
+- Prometheus metrik endpoint'i (`/metrics`)
+- OpenTelemetry tracing (OTLP HTTP exporter)
+- Prometheus ve OpenTelemetry için örnek konfigürasyon dosyaları [observability/prometheus.yml](observability/prometheus.yml) ve [observability/otel-collector-config.yaml](observability/otel-collector-config.yaml)
+
+### Ortam değişkenleri
+
+- `LOG_LEVEL=info`
+- `NODE_ENV=development`
+- `OTEL_SERVICE_NAME=omni-commerce-sys`
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces`
+- `OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer token`
+
+### Endpoint'ler
+
+- Uygulama: `http://localhost:3000`
+- Prometheus metrics: `http://localhost:3000/metrics`
+
+### Grafana / Prometheus notu
+
+Prometheus, [observability/prometheus.yml](observability/prometheus.yml) içindeki scrape ayarıyla uygulamanın `/metrics` endpoint'ini toplayabilir. Grafana tarafında veri kaynağı olarak Prometheus eklenerek dashboard oluşturulabilir.
+
 ## Support
 
 Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).

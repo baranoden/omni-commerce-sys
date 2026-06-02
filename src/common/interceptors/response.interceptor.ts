@@ -14,7 +14,12 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, unknown> {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const httpContext = context.switchToHttp();
+    const request = httpContext.getRequest<{ originalUrl?: string }>();
     const response = httpContext.getResponse();
+
+    if (request.originalUrl?.startsWith('/metrics')) {
+      return next.handle();
+    }
 
     const message =
       this.reflector.getAllAndOverride<string>(RESPONSE_MESSAGE_METADATA, [
