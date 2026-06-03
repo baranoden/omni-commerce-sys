@@ -1,5 +1,10 @@
 import { Controller, HttpException, HttpStatus } from '@nestjs/common';
-import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
+import {
+  EventPattern,
+  MessagePattern,
+  Payload,
+  RpcException,
+} from '@nestjs/microservices';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
@@ -54,6 +59,94 @@ export class ProductsController {
     } catch (error) {
       throw this.toRpcException(error);
     }
+  }
+
+  @MessagePattern('product.stock.check')
+  async checkStock(
+    @Payload()
+    payload: {
+      items: Array<{ productId: number; quantity: number }>;
+    },
+  ) {
+    try {
+      return await this.productsService.checkStock(payload.items);
+    } catch (error) {
+      throw this.toRpcException(error);
+    }
+  }
+
+  @MessagePattern('product.stock.decrement')
+  async decrementStock(
+    @Payload()
+    payload: {
+      orderId: number;
+      items: Array<{ productId: number; quantity: number }>;
+    },
+  ) {
+    try {
+      return await this.productsService.decrementStock(
+        payload.orderId,
+        payload.items,
+      );
+    } catch (error) {
+      throw this.toRpcException(error);
+    }
+  }
+
+  @MessagePattern('product.stock.increment')
+  async incrementStock(
+    @Payload()
+    payload: {
+      orderId: number;
+      items: Array<{ productId: number; quantity: number }>;
+    },
+  ) {
+    try {
+      return await this.productsService.incrementStock(
+        payload.orderId,
+        payload.items,
+      );
+    } catch (error) {
+      throw this.toRpcException(error);
+    }
+  }
+
+  @EventPattern('order.created')
+  async handleOrderCreated(
+    @Payload()
+    payload: {
+      orderId: number;
+      sagaId: string;
+      createdByUserId: number;
+      currency: string;
+      paymentMethodToken: string;
+      items: Array<{ productId: number; quantity: number }>;
+    },
+  ) {
+    await this.productsService.reserveStockForOrder(payload);
+  }
+
+  @EventPattern('payment.completed')
+  async handlePaymentCompleted(
+    @Payload()
+    payload: {
+      orderId: number;
+      sagaId: string;
+    },
+  ) {
+    await this.productsService.confirmReservation(payload);
+  }
+
+  @EventPattern('payment.failed')
+  async handlePaymentFailed(
+    @Payload()
+    payload: {
+      orderId: number;
+      sagaId: string;
+      reason: string;
+    },
+  ) {
+    await this.productsService.releaseReservation(payload);
   }
 
   private toRpcException(error: unknown) {

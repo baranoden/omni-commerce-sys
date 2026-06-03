@@ -35,6 +35,42 @@
       "compilerOptions": {
         "tsConfigPath": "apps/products-service/tsconfig.app.json"
       }
+    },
+    "order-service": {
+      "type": "application",
+      "root": "apps/order-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/order-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/order-service/tsconfig.app.json"
+      }
+    },
+    "payment-service": {
+      "type": "application",
+      "root": "apps/payment-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/payment-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/payment-service/tsconfig.app.json"
+      }
+    },
+    "mock-payment-service": {
+      "type": "application",
+      "root": "apps/mock-payment-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/mock-payment-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/mock-payment-service/tsconfig.app.json"
+      }
+    },
+    "mock-stock-service": {
+      "type": "application",
+      "root": "apps/mock-stock-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/mock-stock-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/mock-stock-service/tsconfig.app.json"
+      }
     }
   }
 }

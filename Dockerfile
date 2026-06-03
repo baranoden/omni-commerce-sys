@@ -24,6 +24,6 @@ ENV NODE_ENV=production
 
 COPY --from=builder /app/dist/${APP_NAME} ./dist/${APP_NAME}
 
-EXPOSE 3000 4001 4002
+EXPOSE 3000 4001 4002 4003 4004
 
 CMD ["sh", "-c", "node dist/$APP_NAME/main.js"]

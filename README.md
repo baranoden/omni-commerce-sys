@@ -107,46 +107,75 @@ Uygulama artık gözlemlenebilirlik için şu bileşenleri içerir:
 
 ## Mikroservis mimarisi
 
-Proje artık aşağıdaki iletişim modelini kullanır:
+Sipariş tarafı basitleştirildi. Aktif akış artık şu servislerle çalışır:
 
-- `api-gateway`: HTTP isteklerini alır ve gerekli senkron işlemler için mikroservislere TCP üzerinden bağlanır.
-- `auth-service`: Kayıt, giriş, JWT üretimi ve kullanıcı profil işlemlerini TCP üzerinden cevaplar; başarılı işlemler sonrası Kafka'ya domain event yayınlar.
-- `products-service`: Ürün CRUD operasyonlarını TCP üzerinden cevaplar; başarılı işlemler sonrası Kafka'ya domain event yayınlar.
-- Asenkron servisler arası iletişim Kafka event'leri ile yürütülür.
-- Senkron servisler arası iletişim gerektiğinde TCP ile yürütülür.
+- `api-gateway`: HTTP isteklerini alır ve TCP ile diğer servislere yönlendirir.
+- `auth-service`: Kayıt, giriş ve JWT işlemlerini yönetir.
+- `order-service`: Siparişi oluşturur, kullanıcının sadece kendi siparişlerini döner ve ödeme akışını orkestre eder.
+- `payment-service`: Ödeme kaydını tutar ve mock ödeme servisini çağırır.
+- `mock-payment-service`: İstenirse ödeme hatası döner.
+- `mock-stock-service`: İstenirse `Stok yok` hatası döner.
+
+### Basit sipariş akışı
+
+1. Kullanıcı `POST /orders` ile `PENDING` durumda sipariş oluşturur.
+2. Kullanıcı `GET /orders` ile sadece kendi siparişlerini görür.
+3. Kullanıcı `POST /orders/:id/pay` ile bir siparişi öder.
+4. `order-service` önce `mock-stock-service` çağrısı yapar.
+5. Stok başarısızsa sipariş `FAILED` olur ve sebep `Stok yok` olarak kaydedilir.
+6. Stok başarılıysa `order-service`, `payment-service` çağrısı yapar.
+7. `payment-service`, `mock-payment-service` çağrısı yapar.
+8. Ödeme başarısızsa sipariş `FAILED` olur.
+9. Ödeme başarılıysa sipariş `COMPLETED` olur.
+
+`POST /orders/:id/pay` çağrısında test amaçlı şu alanlar gönderilebilir:
+
+- `simulatePaymentFailure: true`
+- `simulateStockFailure: true`
 
 ### Klasör yapısı
 
 - `apps/api-gateway`: HTTP gateway
 - `apps/auth-service`: auth mikroservisi
-- `apps/products-service`: ürün mikroservisi
+- `apps/order-service`: sipariş mikroservisi
+- `apps/payment-service`: ödeme mikroservisi
+- `apps/mock-payment-service`: ödeme hatası üreten mock servis
+- `apps/mock-stock-service`: stok hatası üreten mock servis
 
 Eski kök `src` altındaki `auth` ve `products` klasörleri artık kullanılmıyor.
 
 ### Ayrı veritabanları
 
 - Auth / kullanıcı verileri için varsayılan veritabanı: `auth_db`
-- Ürün verileri için varsayılan veritabanı: `products_db`
+- Sipariş verileri için varsayılan veritabanı: `order_db`
+- Ödeme verileri için varsayılan veritabanı: `payment_db`
 
 İsterseniz bunları ortam değişkenleriyle değiştirebilirsiniz:
 
 - `AUTH_DB_HOST`, `AUTH_DB_PORT`, `AUTH_DB_USERNAME`, `AUTH_DB_PASSWORD`, `AUTH_DB_NAME`
 - `AUTH_SERVICE_HOST`, `AUTH_SERVICE_TCP_PORT`
-- `PRODUCTS_DB_HOST`, `PRODUCTS_DB_PORT`, `PRODUCTS_DB_USERNAME`, `PRODUCTS_DB_PASSWORD`, `PRODUCTS_DB_NAME`
-- `PRODUCTS_SERVICE_HOST`, `PRODUCTS_SERVICE_TCP_PORT`
+- `ORDER_DB_HOST`, `ORDER_DB_PORT`, `ORDER_DB_USERNAME`, `ORDER_DB_PASSWORD`, `ORDER_DB_NAME`
+- `ORDER_SERVICE_HOST`, `ORDER_SERVICE_TCP_PORT`
+- `PAYMENT_DB_HOST`, `PAYMENT_DB_PORT`, `PAYMENT_DB_USERNAME`, `PAYMENT_DB_PASSWORD`, `PAYMENT_DB_NAME`
+- `PAYMENT_SERVICE_HOST`, `PAYMENT_SERVICE_TCP_PORT`
+- `MOCK_PAYMENT_SERVICE_HOST`, `MOCK_PAYMENT_SERVICE_TCP_PORT`
+- `MOCK_STOCK_SERVICE_HOST`, `MOCK_STOCK_SERVICE_TCP_PORT`
 - `KAFKA_BROKERS` (örn. `localhost:9092` veya `localhost:9092,localhost:9093`)
 - `KAFKA_CLIENT_ID_PREFIX`
 - `API_GATEWAY_KAFKA_GROUP_ID`
 - `AUTH_EVENTS_KAFKA_GROUP_ID`
 - `PRODUCT_EVENTS_KAFKA_GROUP_ID`
+- `ORDER_EVENTS_KAFKA_GROUP_ID`
+- `PAYMENT_EVENTS_KAFKA_GROUP_ID`
 - `JWT_SECRET`, `JWT_EXPIRES_IN`
 
 ### Çalıştırma
 
-Önce iki PostgreSQL veritabanını oluşturun:
+Önce üç PostgreSQL veritabanını oluşturun:
 
 - `auth_db`
-- `products_db`
+- `order_db`
+- `payment_db`
 
 Kafka kullanıldığı için broker'ın da ayağa kalkması gerekir. Uygulama varsayılan olarak `127.0.0.1:9092` adresine bağlanmaya çalışır. `ECONNREFUSED 127.0.0.1:9092` hatası, bu adreste çalışan bir Kafka broker bulunmadığını gösterir.
 
@@ -188,9 +217,13 @@ Artık tüm proje Docker ile birlikte ayağa kaldırılabilir. Aşağıdaki serv
 
 - `api-gateway`
 - `auth-service`
-- `products-service`
+- `order-service`
+- `payment-service`
+- `mock-payment-service`
+- `mock-stock-service`
 - `auth-db`
-- `products-db`
+- `order-db`
+- `payment-db`
 - `kafka`
 - `kafka-ui`
 
@@ -223,9 +256,13 @@ Bu kurulumdan sonra uygulama uçları şunlardır:
 - API Gateway: `http://localhost:8080`
 - Kafka UI: `http://localhost:8081`
 - Auth TCP: `localhost:4002`
-- Products TCP: `localhost:4001`
+- Mock Stock TCP: `localhost:4001`
+- Order TCP: `localhost:4003`
+- Payment TCP: `localhost:4004`
+- Mock Payment TCP: `localhost:4005`
 - Auth PostgreSQL: `localhost:5433`
-- Products PostgreSQL: `localhost:5434`
+- Order PostgreSQL: `localhost:5435`
+- Payment PostgreSQL: `localhost:5436`
 
 Sistemi kapatmak için:
 
@@ -303,6 +340,8 @@ docker compose logs -f
 docker compose logs -f api-gateway
 docker compose logs -f auth-service
 docker compose logs -f products-service
+docker compose logs -f order-service
+docker compose logs -f payment-service
 docker compose logs -f kafka
 ```
 
@@ -319,6 +358,8 @@ Sonra servisleri ayrı terminallerde başlatın:
 npm run start:dev
 npm run start:auth:dev
 npm run start:products:dev
+npm run start:order:dev
+npm run start:payment:dev
 ```
 
 Kafka broker'ı da çalışıyor olmalıdır. Varsayılan topic kullanımları:
@@ -328,8 +369,51 @@ Kafka broker'ı da çalışıyor olmalıdır. Varsayılan topic kullanımları:
 - `catalog.product.created`
 - `catalog.product.updated`
 - `catalog.product.deleted`
+- `catalog.stock.decremented`
+- `catalog.stock.incremented`
+- `stock.reserved`
+- `stock.decreased`
+- `stock.released`
+- `stock.failed`
+- `order.created`
+- `order.completed`
+- `order.failed`
+- `payment.completed`
+- `payment.failed`
+- `payment.circuit.opened`
 
 `api-gateway`, bu event'leri Kafka üzerinden tüketip merkezi log akışına ekler.
+
+### Sipariş endpoint'leri
+
+Tüm sipariş endpoint'leri JWT korumalıdır.
+
+- `POST /orders`
+- `GET /orders`
+- `GET /orders/:id`
+
+Örnek sipariş isteği:
+
+```json
+{
+  "items": [
+    { "productId": 1, "quantity": 2 },
+    { "productId": 4, "quantity": 1 }
+  ],
+  "paymentMethodToken": "card-ok-demo"
+}
+```
+
+Sipariş oluşturma çağrısı ilk aşamada genelde `PENDING` sipariş döner. Son durumu görmek için aynı siparişi `GET /orders/:id` ile tekrar okuyun.
+
+Örnek durumlar:
+
+- Başarılı ödeme: `paymentMethodToken = card-ok-demo`
+- Başarısız ödeme: `paymentMethodToken` içinde `fail` veya `reject`
+- Yavaş ödeme: `paymentMethodToken` içinde `slow`
+- Stok yetersizliği: mevcut stoktan büyük bir `quantity`
+
+Aynı hata peş peşe belirlenen eşik kadar tekrarlandığında ödeme servisi circuit breaker açar ve yeni istekleri geçici olarak reddeder. Bu durumda da saga akışı `FAILED` ile tamamlanır.
 
 ### Ürün endpoint'leri
 

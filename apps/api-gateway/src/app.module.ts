@@ -6,7 +6,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
-import { ProductsModule } from './products/products.module';
+import { OrdersModule } from './orders/orders.module';
 import { IntegrationEventsController } from './integration-events.controller';
 
 @Module({
@@ -20,7 +20,7 @@ import { IntegrationEventsController } from './integration-events.controller';
       },
     ]),
     AuthModule,
-    ProductsModule,
+    OrdersModule,
   ],
   controllers: [AppController, IntegrationEventsController],
   providers: [

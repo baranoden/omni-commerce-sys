@@ -5,10 +5,11 @@ import { Product } from './product.entity';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
 import { getKafkaBrokers, getKafkaClientId } from '../messaging/kafka.config';
+import { StockReservation } from './stock-reservation.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Product]),
+    TypeOrmModule.forFeature([Product, StockReservation]),
     ClientsModule.register([
       {
         name: 'PRODUCT_EVENTS_CLIENT',

@@ -17,20 +17,38 @@ services:
       timeout: 5s
       retries: 10
 
-  products-db:
+  order-db:
     image: postgres:17-alpine
-    container_name: omni-commerce-products-db
+    container_name: omni-commerce-order-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: products_db
+      POSTGRES_DB: order_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123456
     ports:
-      - '5434:5432'
+      - '5435:5432'
     volumes:
-      - products_db_data:/var/lib/postgresql/data
+      - order_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d products_db']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d order_db']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  payment-db:
+    image: postgres:17-alpine
+    container_name: omni-commerce-payment-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+    ports:
+      - '5436:5432'
+    volumes:
+      - payment_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d payment_db']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -109,29 +127,91 @@ services:
     ports:
       - '4002:4002'
 
-  products-service:
+  order-service:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_NAME: products-service
-    container_name: omni-commerce-products-service
+        APP_NAME: order-service
+    container_name: omni-commerce-order-service
     restart: unless-stopped
     depends_on:
-      products-db:
+      order-db:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
+      mock-stock-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
     environment:
       NODE_ENV: production
-      PRODUCTS_SERVICE_HOST: 0.0.0.0
-      PRODUCTS_SERVICE_TCP_PORT: 4001
-      PRODUCTS_DB_HOST: products-db
-      PRODUCTS_DB_PORT: 5432
-      PRODUCTS_DB_USERNAME: postgres
-      PRODUCTS_DB_PASSWORD: 123456
-      PRODUCTS_DB_NAME: products_db
-      KAFKA_BROKERS: kafka:29092
+      ORDER_SERVICE_HOST: 0.0.0.0
+      ORDER_SERVICE_TCP_PORT: 4003
+      ORDER_DB_HOST: order-db
+      ORDER_DB_PORT: 5432
+      ORDER_DB_USERNAME: postgres
+      ORDER_DB_PASSWORD: 123456
+      ORDER_DB_NAME: order_db
+      MOCK_STOCK_SERVICE_HOST: mock-stock-service
+      MOCK_STOCK_SERVICE_TCP_PORT: 4001
+      PAYMENT_SERVICE_HOST: payment-service
+      PAYMENT_SERVICE_TCP_PORT: 4004
+    ports:
+      - '4003:4003'
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: payment-service
+    container_name: omni-commerce-payment-service
+    restart: unless-stopped
+    depends_on:
+      payment-db:
+        condition: service_healthy
+      mock-payment-service:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PAYMENT_SERVICE_HOST: 0.0.0.0
+      PAYMENT_SERVICE_TCP_PORT: 4004
+      PAYMENT_DB_HOST: payment-db
+      PAYMENT_DB_PORT: 5432
+      PAYMENT_DB_USERNAME: postgres
+      PAYMENT_DB_PASSWORD: 123456
+      PAYMENT_DB_NAME: payment_db
+      MOCK_PAYMENT_SERVICE_HOST: mock-payment-service
+      MOCK_PAYMENT_SERVICE_TCP_PORT: 4005
+    ports:
+      - '4004:4004'
+
+  mock-payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: mock-payment-service
+    container_name: omni-commerce-mock-payment-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      MOCK_PAYMENT_SERVICE_HOST: 0.0.0.0
+      MOCK_PAYMENT_SERVICE_TCP_PORT: 4005
+    ports:
+      - '4005:4005'
+
+  mock-stock-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: mock-stock-service
+    container_name: omni-commerce-mock-stock-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      MOCK_STOCK_SERVICE_HOST: 0.0.0.0
+      MOCK_STOCK_SERVICE_TCP_PORT: 4001
     ports:
       - '4001:4001'
 
@@ -146,7 +226,7 @@ services:
     depends_on:
       auth-service:
         condition: service_started
-      products-service:
+      order-service:
         condition: service_started
       kafka:
         condition: service_healthy
@@ -155,8 +235,8 @@ services:
       PORT: 8080
       AUTH_SERVICE_HOST: auth-service
       AUTH_SERVICE_TCP_PORT: 4002
-      PRODUCTS_SERVICE_HOST: products-service
-      PRODUCTS_SERVICE_TCP_PORT: 4001
+      ORDER_SERVICE_HOST: order-service
+      ORDER_SERVICE_TCP_PORT: 4003
       KAFKA_BROKERS: kafka:29092
       JWT_SECRET: SUPER_SECRET_KEY
       LOG_LEVEL: info
@@ -165,5 +245,6 @@ services:
 
 volumes:
   auth_db_data:
-  products_db_data:
+  order_db_data:
+  payment_db_data:
   kafka_data:
