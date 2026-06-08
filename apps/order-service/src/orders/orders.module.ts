@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { getKafkaBrokers, getKafkaClientId } from '../messaging/kafka.config';
 import { OrderItem } from './order-item.entity';
 import { Order } from './order.entity';
 import { OrdersController } from './orders.controller';
@@ -11,19 +12,27 @@ import { OrdersService } from './orders.service';
     TypeOrmModule.forFeature([Order, OrderItem]),
     ClientsModule.register([
       {
-        name: 'PAYMENT_SERVICE',
+        name: 'PRODUCTS_SERVICE',
         transport: Transport.TCP,
         options: {
-          host: process.env.PAYMENT_SERVICE_HOST ?? '127.0.0.1',
-          port: Number(process.env.PAYMENT_SERVICE_TCP_PORT ?? 4004),
+          host: process.env.PRODUCTS_SERVICE_HOST ?? '127.0.0.1',
+          port: Number(process.env.PRODUCTS_SERVICE_TCP_PORT ?? 4006),
         },
       },
       {
-        name: 'MOCK_STOCK_SERVICE',
-        transport: Transport.TCP,
+        name: 'ORDER_EVENTS_CLIENT',
+        transport: Transport.KAFKA,
         options: {
-          host: process.env.MOCK_STOCK_SERVICE_HOST ?? '127.0.0.1',
-          port: Number(process.env.MOCK_STOCK_SERVICE_TCP_PORT ?? 4001),
+          client: {
+            clientId: getKafkaClientId('order-service-producer'),
+            brokers: getKafkaBrokers(),
+          },
+          consumer: {
+            groupId:
+              process.env.ORDER_EVENTS_KAFKA_GROUP_ID ??
+              'omni-commerce-order-service-producer',
+          },
+          producerOnlyMode: true,
         },
       },
     ]),

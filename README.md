@@ -5,9 +5,10 @@ Basitleştirilmiş omni-commerce demo projesi.
 Aktif senaryo 4 servis üzerine kuruludur:
 
 - `auth-service`: kayıt, giriş, JWT
+- `products-service`: ürün kataloğu, stok ve rezervasyon
 - `order-service`: sipariş oluşturma, kullanıcının kendi siparişlerini listeleme, ödeme orkestrasyonu
 - `payment-service`: ödeme kaydı ve ödeme işleme
-- `mock-payment-service` / `mock-stock-service`: hata senaryoları için mock servisler
+- `mock-payment-service` / `mock-stock-service`: hata senaryoları ve legacy testler için mock servisler
 
 HTTP giriş noktası `api-gateway` servisidir.
 
@@ -15,16 +16,18 @@ HTTP giriş noktası `api-gateway` servisidir.
 
 1. Kullanıcı kayıt olur ve giriş yapar.
 2. Kullanıcı `POST /orders` ile sipariş oluşturur.
-3. Kullanıcı `GET /orders` ile sadece kendi siparişlerini görür.
-4. Kullanıcı `POST /orders/:id/pay` ile siparişi öder.
-5. `mock-stock-service` hata dönerse sipariş `FAILED` olur.
-6. `mock-payment-service` hata dönerse sipariş `FAILED` olur.
-7. Her şey başarılıysa sipariş `COMPLETED` olur.
+3. Sipariş oluşturulurken ürün bilgileri `products-service` üzerinden doğrulanır.
+4. Kullanıcı `GET /orders` ile sadece kendi siparişlerini görür.
+5. Kullanıcı `POST /orders/:id/pay` ile Kafka tabanlı ödeme sürecini başlatır.
+6. `products-service` `order.created` event'i ile stok rezervasyonu yapar.
+7. `payment-service` `stock.reserved` event'i ile ödemeyi işler.
+8. `payment.failed` gelirse sipariş `FAILED`, `payment.completed` gelirse sipariş `COMPLETED` olur.
 
 ## Servisler
 
 - `api-gateway`: `http://localhost:8080`
 - `auth-service`: TCP `4002`
+- `products-service`: TCP `4006`
 - `mock-stock-service`: TCP `4001`
 - `order-service`: TCP `4003`
 - `payment-service`: TCP `4004`
@@ -77,6 +80,7 @@ docker compose down -v
 npm run build
 npm run start:dev
 npm run start:auth:dev
+npm run start:products:dev
 npm run start:order:dev
 npm run start:payment:dev
 npm run start:mock-payment:dev
@@ -166,4 +170,4 @@ Hazır dosyalar:
 ## Notlar
 
 - Depoda eski veya deneysel klasörler bulunabilir; aktif akış yukarıdaki sade mimaridir.
-- Sipariş tarafında ürün servisi aktif akışın parçası değildir.
+- Sipariş/ödeme akışı için Kafka topic zinciri `order.created -> stock.reserved|stock.failed -> payment.completed|payment.failed` olarak çalışır.

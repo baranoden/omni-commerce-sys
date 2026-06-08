@@ -8,6 +8,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { OrdersModule } from './orders/orders.module';
 import { IntegrationEventsController } from './integration-events.controller';
+import { ProductsModule } from './products/products.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { IntegrationEventsController } from './integration-events.controller';
       },
     ]),
     AuthModule,
+    ProductsModule,
     OrdersModule,
   ],
   controllers: [AppController, IntegrationEventsController],

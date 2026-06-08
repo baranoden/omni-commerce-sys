@@ -121,6 +121,8 @@ export class ProductsController {
       currency: string;
       paymentMethodToken: string;
       items: Array<{ productId: number; quantity: number }>;
+      simulatePaymentFailure?: boolean;
+      simulateStockFailure?: boolean;
     },
   ) {
     await this.productsService.reserveStockForOrder(payload);

@@ -27,6 +27,46 @@
       "value": "1"
     },
     {
+      "key": "productName",
+      "value": "Demo Ürün"
+    },
+    {
+      "key": "productDescription",
+      "value": "Postman üzerinden oluşturulan demo ürün"
+    },
+    {
+      "key": "productPrice",
+      "value": "199.90"
+    },
+    {
+      "key": "productStock",
+      "value": "25"
+    },
+    {
+      "key": "productSku",
+      "value": "DEMO-SKU-001"
+    },
+    {
+      "key": "updatedProductName",
+      "value": "Demo Ürün Güncel"
+    },
+    {
+      "key": "updatedProductDescription",
+      "value": "Güncellenmiş ürün açıklaması"
+    },
+    {
+      "key": "updatedProductPrice",
+      "value": "249.90"
+    },
+    {
+      "key": "updatedProductStock",
+      "value": "30"
+    },
+    {
+      "key": "updatedProductSku",
+      "value": "DEMO-SKU-001-UPD"
+    },
+    {
       "key": "orderQuantity",
       "value": "1"
     },
@@ -159,6 +199,135 @@
               "raw": "{{baseUrl}}/auth/profile",
               "host": ["{{baseUrl}}"],
               "path": ["auth", "profile"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "POST /products",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "const createdProductId = json?.data?.id;",
+                  "if (createdProductId) {",
+                  "  pm.collectionVariables.set('productId', String(createdProductId));",
+                  "}",
+                  "pm.test('Ürün oluşturuldu', function () {",
+                  "  pm.expect(pm.response.code).to.eql(201);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{productName}}\",\n  \"description\": \"{{productDescription}}\",\n  \"price\": {{productPrice}},\n  \"stock\": {{productStock}},\n  \"sku\": \"{{productSku}}\",\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["products"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["products"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /products/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /products/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{updatedProductName}}\",\n  \"description\": \"{{updatedProductDescription}}\",\n  \"price\": {{updatedProductPrice}},\n  \"stock\": {{updatedProductStock}},\n  \"sku\": \"{{updatedProductSku}}\",\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /products/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}"]
             }
           },
           "response": []

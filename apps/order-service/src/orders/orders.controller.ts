@@ -1,5 +1,10 @@
 import { Controller, HttpException, HttpStatus } from '@nestjs/common';
-import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
+import {
+  EventPattern,
+  MessagePattern,
+  Payload,
+  RpcException,
+} from '@nestjs/microservices';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrdersService } from './orders.service';
 
@@ -51,6 +56,63 @@ export class OrdersController {
     } catch (error) {
       throw this.toRpcException(error);
     }
+  }
+
+  @EventPattern('stock.reserved')
+  async handleStockReserved(
+    @Payload()
+    payload: {
+      orderId: number;
+      sagaId: string;
+      currency: string;
+      totalAmount: number;
+      items: Array<{
+        productId: number;
+        productName: string;
+        sku: string;
+        quantity: number;
+        unitPrice: number;
+        lineTotal: number;
+      }>;
+    },
+  ) {
+    await this.ordersService.handleStockReserved(payload);
+  }
+
+  @EventPattern('stock.failed')
+  async handleStockFailed(
+    @Payload()
+    payload: {
+      orderId: number;
+      sagaId: string;
+      reason?: string;
+    },
+  ) {
+    await this.ordersService.handleStockFailed(payload);
+  }
+
+  @EventPattern('payment.completed')
+  async handlePaymentCompleted(
+    @Payload()
+    payload: {
+      orderId: number;
+      sagaId: string;
+      transactionId?: string;
+    },
+  ) {
+    await this.ordersService.handlePaymentCompleted(payload);
+  }
+
+  @EventPattern('payment.failed')
+  async handlePaymentFailed(
+    @Payload()
+    payload: {
+      orderId: number;
+      sagaId: string;
+      reason?: string;
+    },
+  ) {
+    await this.ordersService.handlePaymentFailed(payload);
   }
 
   private toRpcException(error: unknown) {

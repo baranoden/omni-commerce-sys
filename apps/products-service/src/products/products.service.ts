@@ -24,6 +24,8 @@ interface OrderCreatedEvent {
   currency: string;
   paymentMethodToken: string;
   items: Array<{ productId: number; quantity: number }>;
+  simulatePaymentFailure?: boolean;
+  simulateStockFailure?: boolean;
 }
 
 interface PaymentResultEvent {
@@ -133,6 +135,17 @@ export class ProductsService
   }
 
   async reserveStockForOrder(payload: OrderCreatedEvent) {
+    if (payload.simulateStockFailure === true) {
+      this.productEventsClient.emit('stock.failed', {
+        orderId: payload.orderId,
+        sagaId: payload.sagaId,
+        reason: 'Stok yok',
+        occurredAt: new Date().toISOString(),
+      });
+
+      return;
+    }
+
     const existingReservations = await this.stockReservationsRepository.find({
       where: { orderId: payload.orderId },
       order: { productId: 'ASC' },
@@ -467,6 +480,7 @@ export class ProductsService
       sagaId: payload.sagaId,
       createdByUserId: payload.createdByUserId,
       paymentMethodToken: payload.paymentMethodToken,
+      simulatePaymentFailure: payload.simulatePaymentFailure,
       currency: payload.currency ?? 'TRY',
       items: reservations.map((reservation) => ({
         productId: reservation.productId,

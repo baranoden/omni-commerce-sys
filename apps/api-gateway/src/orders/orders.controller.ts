@@ -47,8 +47,8 @@ export class OrdersController {
   }
 
   @Post(':id/pay')
-  @HttpCode(HttpStatus.OK)
-  @ResponseMessage('Sipariş ödeme işlemi tamamlandı')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ResponseMessage('Sipariş ödeme süreci başlatıldı')
   pay(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: PayOrderDto,

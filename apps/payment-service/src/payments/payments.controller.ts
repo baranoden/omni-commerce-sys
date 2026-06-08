@@ -1,5 +1,10 @@
 import { Controller, HttpException, HttpStatus } from '@nestjs/common';
-import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
+import {
+  EventPattern,
+  MessagePattern,
+  Payload,
+  RpcException,
+} from '@nestjs/microservices';
 import { PaymentsService } from './payments.service';
 
 @Controller()
@@ -23,6 +28,26 @@ export class PaymentsController {
     } catch (error) {
       throw this.toRpcException(error);
     }
+  }
+
+  @EventPattern('stock.reserved')
+  async handleStockReserved(
+    @Payload()
+    payload: {
+      orderId: number;
+      sagaId: string;
+      createdByUserId: number;
+      paymentMethodToken: string;
+      currency: string;
+      totalAmount: number;
+      simulatePaymentFailure?: boolean;
+      items: Array<{
+        productId: number;
+        quantity: number;
+      }>;
+    },
+  ) {
+    await this.paymentsService.processReservedStock(payload);
   }
 
   private toRpcException(error: unknown) {

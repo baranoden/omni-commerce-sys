@@ -1,10 +1,14 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   NotFoundException,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
 } from '@nestjs/common';
-import { ClientProxy } from '@nestjs/microservices';
+import { ClientKafka, ClientProxy } from '@nestjs/microservices';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { firstValueFrom } from 'rxjs';
@@ -12,56 +16,88 @@ import { Repository } from 'typeorm';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CompensationStatus, Order, OrderStatus } from './order.entity';
 
-interface StockCheckResult {
-  success: boolean;
-  reason?: string;
+interface StockCheckResultItem {
+  productId: number;
+  productName: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  availableStock: number;
 }
 
-interface PaymentProcessResult {
-  success: boolean;
-  reason?: string;
+interface StockCheckResult {
+  items: StockCheckResultItem[];
+  totalAmount: number;
+  checkedAt: string;
+}
+
+interface StockReservedEvent {
+  orderId: number;
+  sagaId: string;
+  currency: string;
+  totalAmount: number;
+  items: Array<{
+    productId: number;
+    productName: string;
+    sku: string;
+    quantity: number;
+    unitPrice: number;
+    lineTotal: number;
+  }>;
+}
+
+interface PaymentCompletedEvent {
+  orderId: number;
+  sagaId: string;
   transactionId?: string;
+}
+
+interface FailureEvent {
+  orderId: number;
+  sagaId: string;
+  reason?: string;
 }
 
 type OrderWithSecret = Order & { paymentMethodToken: string };
 
-const MOCK_CATALOG = new Map<
-  number,
-  { productName: string; sku: string; unitPrice: number }
->([
-  [1, { productName: 'Kulaklık', sku: 'PRD-001', unitPrice: 899.9 }],
-  [2, { productName: 'Klavye', sku: 'PRD-002', unitPrice: 1249.9 }],
-  [3, { productName: 'Mouse', sku: 'PRD-003', unitPrice: 649.9 }],
-  [4, { productName: 'Monitör', sku: 'PRD-004', unitPrice: 5399.9 }],
-]);
-
 @Injectable()
-export class OrdersService {
+export class OrdersService implements OnApplicationBootstrap, OnModuleDestroy {
   constructor(
     @InjectRepository(Order)
     private readonly ordersRepository: Repository<Order>,
-    @Inject('PAYMENT_SERVICE')
-    private readonly paymentClient: ClientProxy,
-    @Inject('MOCK_STOCK_SERVICE')
-    private readonly stockClient: ClientProxy,
+    @Inject('PRODUCTS_SERVICE')
+    private readonly productsClient: ClientProxy,
+    @Inject('ORDER_EVENTS_CLIENT')
+    private readonly orderEventsClient: ClientKafka,
   ) {}
+
+  async onApplicationBootstrap() {
+    await this.orderEventsClient.connect();
+  }
+
+  async onModuleDestroy() {
+    await this.orderEventsClient.close();
+  }
 
   async create(createOrderDto: CreateOrderDto & { createdByUserId: number }) {
     const normalizedItems = this.normalizeItems(createOrderDto.items);
-    const detailedItems = normalizedItems.map((item) =>
-      this.buildOrderItem(item.productId, item.quantity),
-    );
-    const totalAmount = detailedItems.reduce(
-      (sum, item) => sum + (item.lineTotal ?? 0),
-      0,
-    );
+    const stockSnapshot = await this.checkStock(normalizedItems);
+    const detailedItems = stockSnapshot.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      productName: item.productName,
+      sku: item.sku,
+      unitPrice: item.unitPrice,
+      lineTotal: item.lineTotal,
+    }));
 
     const order = await this.ordersRepository.save(
       this.ordersRepository.create({
         sagaId: randomUUID(),
         createdByUserId: createOrderDto.createdByUserId,
         paymentMethodToken: createOrderDto.paymentMethodToken,
-        totalAmount,
+        totalAmount: stockSnapshot.totalAmount,
         currency: 'TRY',
         status: OrderStatus.PENDING,
         compensationStatus: CompensationStatus.NOT_REQUIRED,
@@ -119,33 +155,131 @@ export class OrdersService {
       throw new BadRequestException('Başarısız sipariş tekrar ödenemez');
     }
 
-    const stockResult = await this.checkStock(
-      order,
-      options.simulateStockFailure,
-    );
-
-    if (!stockResult.success) {
-      return this.markAsFailed(order, stockResult.reason ?? 'Stok yok');
+    if (order.status === OrderStatus.CONFIRMED) {
+      throw new BadRequestException('Sipariş ödeme süreci zaten başlatıldı');
     }
 
-    const paymentResult = await this.processPayment(
-      order,
-      options.simulatePaymentFailure,
+    order.status = OrderStatus.CONFIRMED;
+    order.failureReason = null;
+    order.paymentTransactionId = null;
+
+    const pendingOrder = await this.ordersRepository.save(order);
+
+    this.orderEventsClient.emit('order.created', {
+      orderId: pendingOrder.id,
+      sagaId: pendingOrder.sagaId,
+      createdByUserId: pendingOrder.createdByUserId,
+      currency: pendingOrder.currency,
+      paymentMethodToken: pendingOrder.paymentMethodToken,
+      items: pendingOrder.items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+      })),
+      simulatePaymentFailure: options.simulatePaymentFailure,
+      simulateStockFailure: options.simulateStockFailure,
+      occurredAt: new Date().toISOString(),
+    });
+
+    return this.sanitizeOrder(pendingOrder);
+  }
+
+  async handleStockReserved(payload: StockReservedEvent) {
+    const order = await this.findOrderById(payload.orderId);
+
+    if (
+      !order ||
+      order.status === OrderStatus.COMPLETED ||
+      order.status === OrderStatus.FAILED
+    ) {
+      return;
+    }
+
+    order.status = OrderStatus.CONFIRMED;
+    order.failureReason = null;
+    order.currency = payload.currency ?? order.currency;
+    order.totalAmount = payload.totalAmount ?? order.totalAmount;
+    order.items = order.items.map((item) => {
+      const updatedItem = payload.items.find(
+        (payloadItem) => payloadItem.productId === item.productId,
+      );
+
+      if (!updatedItem) {
+        return item;
+      }
+
+      item.productName = updatedItem.productName;
+      item.sku = updatedItem.sku;
+      item.quantity = updatedItem.quantity;
+      item.unitPrice = updatedItem.unitPrice;
+      item.lineTotal = updatedItem.lineTotal;
+
+      return item;
+    });
+
+    await this.ordersRepository.save(order);
+  }
+
+  async handleStockFailed(payload: FailureEvent) {
+    const failedOrder = await this.markAsFailedById(
+      payload.orderId,
+      payload.reason ?? 'Stok rezervasyonu başarısız',
     );
 
-    if (!paymentResult.success) {
-      return this.markAsFailed(
-        order,
-        paymentResult.reason ?? 'Ödeme başarısız',
-      );
+    if (!failedOrder) {
+      return;
+    }
+
+    this.orderEventsClient.emit('order.failed', {
+      orderId: failedOrder.id,
+      sagaId: failedOrder.sagaId,
+      reason: failedOrder.failureReason,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  async handlePaymentCompleted(payload: PaymentCompletedEvent) {
+    const order = await this.findOrderById(payload.orderId);
+
+    if (
+      !order ||
+      order.status === OrderStatus.COMPLETED ||
+      order.status === OrderStatus.FAILED
+    ) {
+      return;
     }
 
     order.status = OrderStatus.COMPLETED;
     order.failureReason = null;
-    order.paymentTransactionId = paymentResult.transactionId ?? null;
+    order.paymentTransactionId = payload.transactionId ?? null;
 
     const completedOrder = await this.ordersRepository.save(order);
-    return this.sanitizeOrder(completedOrder);
+
+    this.orderEventsClient.emit('order.completed', {
+      orderId: completedOrder.id,
+      sagaId: completedOrder.sagaId,
+      transactionId: completedOrder.paymentTransactionId,
+      totalAmount: Number(completedOrder.totalAmount),
+      currency: completedOrder.currency,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  async handlePaymentFailed(payload: FailureEvent) {
+    const failedOrder = await this.markAsFailedById(
+      payload.orderId,
+      payload.reason ?? 'Ödeme başarısız',
+    );
+
+    if (!failedOrder) {
+      return;
+    }
+
+    this.orderEventsClient.emit('order.failed', {
+      orderId: failedOrder.id,
+      sagaId: failedOrder.sagaId,
+      reason: failedOrder.failureReason,
+      occurredAt: new Date().toISOString(),
+    });
   }
 
   private async markAsFailed(order: Order, reason: string) {
@@ -155,6 +289,20 @@ export class OrdersService {
 
     const failedOrder = await this.ordersRepository.save(order);
     return this.sanitizeOrder(failedOrder);
+  }
+
+  private async markAsFailedById(id: number, reason: string) {
+    const order = await this.findOrderById(id);
+
+    if (
+      !order ||
+      order.status === OrderStatus.FAILED ||
+      order.status === OrderStatus.COMPLETED
+    ) {
+      return null;
+    }
+
+    return this.markAsFailed(order, reason);
   }
 
   private async findOrderForPayment(
@@ -178,83 +326,47 @@ export class OrdersService {
   }
 
   private async checkStock(
-    order: Order,
-    forceFailure?: boolean,
+    items: Array<{ productId: number; quantity: number }>,
   ): Promise<StockCheckResult> {
     try {
       return await firstValueFrom(
-        this.stockClient.send<StockCheckResult, Record<string, unknown>>(
-          'stock.check',
+        this.productsClient.send<StockCheckResult, Record<string, unknown>>(
+          'product.stock.check',
           {
-            orderId: order.id,
-            items: order.items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-            })),
-            forceFailure,
+            items,
           },
         ),
       );
-    } catch {
-      return {
-        success: false,
-        reason: 'Stok servisine ulaşılamadı',
-      };
+    } catch (error) {
+      throw this.mapRpcError(error, 'Ürün servisi hatası oluştu');
     }
   }
 
-  private async processPayment(
-    order: OrderWithSecret,
-    forceFailure?: boolean,
-  ): Promise<PaymentProcessResult> {
-    try {
-      return await firstValueFrom(
-        this.paymentClient.send<PaymentProcessResult, Record<string, unknown>>(
-          'payment.process',
-          {
-            orderId: order.id,
-            userId: order.createdByUserId,
-            totalAmount: Number(order.totalAmount),
-            currency: order.currency,
-            paymentMethodToken: order.paymentMethodToken,
-            forceFailure,
-          },
-        ),
+  private async findOrderById(id: number) {
+    return this.ordersRepository.findOne({
+      where: { id },
+      order: { id: 'DESC' },
+    });
+  }
+
+  private mapRpcError(error: unknown, fallbackMessage: string) {
+    if (typeof error === 'object' && error !== null) {
+      const rpcError = error as {
+        statusCode?: number;
+        message?: string | string[];
+      };
+
+      const message = Array.isArray(rpcError.message)
+        ? (rpcError.message[0] ?? fallbackMessage)
+        : (rpcError.message ?? fallbackMessage);
+
+      return new HttpException(
+        message,
+        rpcError.statusCode ?? HttpStatus.BAD_GATEWAY,
       );
-    } catch {
-      return {
-        success: false,
-        reason: 'Ödeme servisine ulaşılamadı',
-      };
-    }
-  }
-
-  private buildOrderItem(productId: number, quantity: number) {
-    const catalogItem = this.getCatalogItem(productId);
-    const lineTotal = Number((catalogItem.unitPrice * quantity).toFixed(2));
-
-    return {
-      productId,
-      quantity,
-      productName: catalogItem.productName,
-      sku: catalogItem.sku,
-      unitPrice: catalogItem.unitPrice,
-      lineTotal,
-    };
-  }
-
-  private getCatalogItem(productId: number) {
-    const catalogItem = MOCK_CATALOG.get(productId);
-
-    if (catalogItem) {
-      return catalogItem;
     }
 
-    return {
-      productName: `Ürün ${productId}`,
-      sku: `PRD-${String(productId).padStart(3, '0')}`,
-      unitPrice: Number((99.9 + productId * 10).toFixed(2)),
-    };
+    return new HttpException(fallbackMessage, HttpStatus.BAD_GATEWAY);
   }
 
   private normalizeItems(items: CreateOrderDto['items']) {
